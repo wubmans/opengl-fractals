@@ -7,14 +7,18 @@
 			"command": "/usr/bin/gcc",
 			"args": [
 				"-fdiagnostics-color=always",
-				
 				"-I/usr/include",
+				
+			
 				"-g",
 				"${file}",
-				"-lstdc++",
-				"-lglfw",
 				"-o",
-				"${fileDirname}/${fileBasenameNoExtension}"
+				"${fileDirname}/${fileBasenameNoExtension}",
+				"-lm",
+				"-lGLEW",
+				"-lGL",
+				"-lglfw",
+				"-lstdc++"
 			],
 			"options": {
 				"cwd": "${fileDirname}"

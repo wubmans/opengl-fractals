@@ -1,3 +1,6 @@
-# OpenGL Compute Example
+export MESA_GL_VERSION_OVERRIDE=4.5
+glxinfo | grep "OpenGL version"
+glxinfo -B
+echo 'export MESA_GL_VERSION_OVERRIDE=4.5' >> ~/.bashrc
 
-This example demonstrates using Compute Shaders to render a cloud of particles that are attracted towards the mouse cursor
+ LIBGL_ALWAYS_SOFTWARE=true ./main

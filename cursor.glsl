@@ -22,7 +22,7 @@ layout(std430, binding = 3) buffer time
 
 layout(local_size_x = 1000, local_size_y = 1, local_size_z = 1) in;
 
-const float G = 0.0001;
+const float G = 0.001;
 
 void main() {
   // Get easier references to positions/velocities
