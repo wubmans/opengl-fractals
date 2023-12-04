@@ -35,8 +35,7 @@ void main()
 
     v.x = sigma * (p.y - p.x);
     v.y = p.x * ( rho - p.z ) - p.y;
-    v.z = 0.0f;
-    // v.z = p.x * p.y - beta * p.z;
+    v.z = p.x * p.y - beta * p.z;
 
     p.xyz += v.xyz * dt;
 
