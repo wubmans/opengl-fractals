@@ -1,26 +1,33 @@
-#include <GL/glew.h>
-#include <GL/glut.h>
-#include <GLFW/glfw3.h>
-
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
 #include <iostream>
 #include <fstream>
-#include <string.h>
-#include <cstdlib>
 
-#define NUM_PARTICLES 100000
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/random.hpp>
 
-// This MUST match with local_size_x inside cursor.glsl
-#define WORK_GROUP_SIZE 1000
+const unsigned int PARTICLES = 1024 * 1024;
 
-#define SCREENX 2560
-#define SCREENY 1440
+const unsigned int SCREEN_WIDTH = 1024;
+const unsigned int SCREEN_HEIGHT = 1024;
 
+const unsigned short OPENGL_MAJOR_VERSION = 4;
+const unsigned short OPENGL_MINOR_VERSION = 6;
 
-glm::vec2 defaultCursor = glm::vec2(0.0f, 0.0f);
+glm::vec4 positions[ PARTICLES ];
 
+GLuint positionBuffer;
+GLuint vao;
+
+float dt;
+float delta;
+
+static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods){
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+    {
+        glfwSetWindowShouldClose(window, GL_TRUE);
+    }
+}
 
 GLchar* LoadShader(const std::string &file) {
 
@@ -30,7 +37,7 @@ GLchar* LoadShader(const std::string &file) {
   shaderFile.open(file, std::ios::binary);
 
   if (shaderFile.fail()) {
-    std::cout << "COULD NOT FIND SHADER FILE" ;
+    throw std::runtime_error("COULD NOT FIND SHADER FILE");
   }
 
   shaderFile.seekg(0, shaderFile.end);
@@ -47,182 +54,149 @@ GLchar* LoadShader(const std::string &file) {
   return shaderCode;
 }
 
-int main()
+GLuint createComputeProgram()
 {
-    srand(time(0));
+    GLchar infolog[512];
 
-    const GLfloat delta_time = 0.1f;
-
-    //Window Setup
-    glfwInit();
-
-
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    GLFWwindow* window = glfwCreateWindow(SCREENX, SCREENY, "particles",  glfwGetPrimaryMonitor(), nullptr);
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-
-    glewInit();
-
-
-    //Setup Initial Positions/Velocities
-    glm::vec4 positions[NUM_PARTICLES];
-    glm::vec4 velocities[NUM_PARTICLES];
-    for(int i = 0; i < NUM_PARTICLES; i++) {
-    float r = (float)rand() / RAND_MAX;
-    r *= 8;
-    float velx = r * sin(i) / 10;
-    float vely = r * cos(i) / 10;
-    positions[i] = glm::vec4(velx, vely, 0.0f, 0.0f);
-    velocities[i] = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-    }
-
-    GLuint vao, pos, timebuffer, vel, cursor;
-
-    /**
-     * VAO Setup - Even though we'll be sourcing all of our positions from a shader storage buffer,
-     * a VAO must be bound for drawing, so let's just create an empty one. We also don't need a VBO
-     * since all our rendering will be points
-     */
-    glCreateVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-
-    /**
-     * Buffer setup - We'll need 4 SSBOs, one for the position of each point, one for velocity,
-     * one for cursor position, and one for delta_time. As cursor and delta_time are small, these
-     * could have been implemented using regular uniforms, but I opted for consistency instead
-     */
-    glCreateBuffers(1, &pos);
-    glCreateBuffers(1, &timebuffer);
-    glCreateBuffers(1, &vel);
-    glCreateBuffers(1, &cursor);
-    glNamedBufferData(vel, sizeof(velocities), velocities, GL_STATIC_DRAW);
-    glNamedBufferData(pos, sizeof(positions), positions, GL_STATIC_DRAW);
-    glNamedBufferData(timebuffer, sizeof(GLfloat), &delta_time, GL_DYNAMIC_DRAW);
-    glNamedBufferData(cursor, 2 * sizeof(GLfloat), glm::value_ptr(defaultCursor), GL_DYNAMIC_DRAW);
-
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, pos);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, vel);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, cursor);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, timebuffer);
-
-
-    /*
-    * Basic Shader Setup - This is standard shader loading and compilation. The only difference is that the compute
-    * shader must be linked by itself in a separate program
-    */
-    const GLchar* vertCode = LoadShader("shader.vert");
-    const GLchar* fragCode = LoadShader("shader.frag");
     const GLchar* computeCode = LoadShader("cursor.glsl");
 
+    GLuint computeShader = glCreateShader(GL_COMPUTE_SHADER);
+    glShaderSource(computeShader, 1, &computeCode, nullptr);
+    glCompileShader(computeShader);
+    glGetShaderInfoLog(computeShader, 512, nullptr, infolog);
+    std::cout << infolog << std::endl;
+
+    GLuint computeProgram = glCreateProgram();
+    glAttachShader(computeProgram, computeShader);
+    glLinkProgram(computeProgram);
+    
+    glGetProgramInfoLog(computeProgram, 512, nullptr, infolog);
+    std::cout << infolog << std::endl;
+
+    glDeleteShader(computeShader);
+
+    return computeProgram;
+}
+
+GLuint createShaderProgram()
+{
+    GLchar infolog[512];
+
+    const GLchar* vertCode = LoadShader("shader.vert");
+    const GLchar* fragCode = LoadShader("shader.frag");
+    
     GLuint vertShader = glCreateShader(GL_VERTEX_SHADER);
     GLuint fragShader = glCreateShader(GL_FRAGMENT_SHADER);
-    GLuint computeShader = glCreateShader(GL_COMPUTE_SHADER);
 
     glShaderSource(vertShader, 1, &vertCode, nullptr);
     glShaderSource(fragShader, 1, &fragCode, nullptr);
-    glShaderSource(computeShader, 1, &computeCode, nullptr);
-    GLchar infolog[512];
+
     glCompileShader(vertShader);
     glGetShaderInfoLog(vertShader, 512, nullptr, infolog);
-
     std::cout << infolog << std::endl;
-
     glCompileShader(fragShader);
     glGetShaderInfoLog(fragShader, 512, nullptr, infolog);
-    std::cout << infolog << std::endl;
-
-    glCompileShader(computeShader);
-    glGetShaderInfoLog(computeShader, 512, nullptr, infolog);
     std::cout << infolog << std::endl;
 
     GLuint shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertShader);
     glAttachShader(shaderProgram, fragShader);
     glLinkProgram(shaderProgram);
+
+    glGetProgramInfoLog(shaderProgram, 512, nullptr, infolog);
+    std::cout << infolog << std::endl;
+
     glDeleteShader(vertShader);
     glDeleteShader(fragShader);
 
-    glGetProgramInfoLog(shaderProgram, 512, nullptr, infolog);
+    return shaderProgram;
+}
 
-    std::cout << infolog << std::endl;
+void loop(GLFWwindow* window, GLuint computeProgram, GLuint shaderProgram)
+{
+    glClearColor(0.0, 0.0, 0.0, 0.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    GLuint computeProgram = glCreateProgram();
-    glAttachShader(computeProgram, computeShader);
-    glLinkProgram(computeProgram);
-    glDeleteShader(computeShader);
+    // compute phase
 
-    glGetProgramInfoLog(computeProgram, 512, nullptr, infolog);
-    std::cout << infolog << std::endl;
+    glUseProgram(computeProgram);
+    glUniform1fv(glGetUniformLocation(computeProgram, "dt"), 1, &dt);
+    glDispatchCompute(PARTICLES / 128, 1, 1);
+    glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
-    /**
-     * Setup some basic properties for screen size, background color and point size
-     * 2.0 Point Size was used to make it easier to see
-     */
-    glViewport(0, 0, SCREENX, SCREENY);
-    glClearColor(0.05f, 0.05, 0.05f, 1.0f);
-    glPointSize(2.0f);
+    // shader phase
+    glUseProgram(shaderProgram);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_POINTS, 0, PARTICLES);
+  
 
-    // Draw Loop
-    while(glfwWindowShouldClose(window) == 0) 
+    glfwSwapBuffers(window);
+    glfwSwapInterval(0);
+}
+
+int frameCount = 0;
+float interval;
+
+int main()
+{
+    srand(time(NULL));
+
+    GLFWwindow* window;
+
+	if (!glfwInit())
+		return -1;
+
+    
+
+	window = glfwCreateWindow(1920, 1080, "Hello World", NULL, NULL);
+	if (!window)
+	{
+		glfwTerminate();
+		return -1;
+	}
+    
+    glfwMakeContextCurrent(window);
+    glfwSetKeyCallback(window, key_callback);
+
+    GLenum err = glewInit();
+
+    for (size_t i = 0; i < PARTICLES; i++)
     {
-        glClear(GL_COLOR_BUFFER_BIT);
-        /**
-        * Get our cursor coordinates in normalized device coordinates
-        */
-        glfwPollEvents();
-        double cursorx;
-        double cursory;
-        glfwGetCursorPos(window, &cursorx, &cursory);
-
-        cursorx = cursorx - (SCREENX / 2);
-        cursorx /= SCREENX;
-        cursorx *= 2;
-
-        cursory = cursory - (SCREENY / 2);
-        cursory /= SCREENY;
-        cursory *= -2;
-
-        /**
-        * Copy over the cursor position into the buffer
-        */
-        glm::vec2 current_cursor = glm::vec2(cursorx, cursory);
-
-        glNamedBufferSubData(cursor, 0, 2 * sizeof(GLfloat), glm::value_ptr(current_cursor));
-
-        /**
-        * Fire off our compute shader run. Since we want to simulate 100000 particles, and our work group size is 1000
-        * we need to dispatch 100 work groups
-        */
-        glUseProgram(computeProgram);
-        glDispatchCompute(NUM_PARTICLES / WORK_GROUP_SIZE, 1, 1);
-
-        /**
-        * Draw the particles
-        */
-        glUseProgram(shaderProgram);
-        glDrawArraysInstanced(GL_POINTS, 0, 1, NUM_PARTICLES);
-
-
-        glfwSwapBuffers(window);
+        positions[i] = glm::gaussRand(glm::vec4(0, 0, 0, 1), glm::vec4(1.0, 1.0, 0, 0));
     }
 
-    /**
-     * We're done now, just need to free up our resources
-     */
+    // vao
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
 
-    //OpenGL Shutdown
-    glDeleteProgram(shaderProgram);
-    glDeleteProgram(computeProgram);
-    delete[] vertCode;
-    delete[] fragCode;
-    delete[] computeCode;
+    // ssbo
+    glGenBuffers(1, &positionBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, positionBuffer);
+    glBufferData(GL_ARRAY_BUFFER, PARTICLES * sizeof(glm::vec4), &positions[0], GL_STATIC_DRAW);
 
-    //Window Shutdown
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    return 0;
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), (char*) 0 + 0 * sizeof(GLfloat));
+
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, positionBuffer);
+
+    GLuint shaderProgram = createShaderProgram();
+    GLuint computeProgram = createComputeProgram();
+
+    while (!glfwWindowShouldClose(window))
+    {
+        loop(window, computeProgram, shaderProgram);
+        dt += 0.01f;
+        frameCount++;
+        interval += glfwGetTime();
+        glfwSetTime(0.0f);
+
+        if (frameCount % 100 == 0)
+        {
+            printf("fps: %f\n", frameCount / interval);
+        }
+
+        glfwPollEvents();
+    }
+
 }
