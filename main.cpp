@@ -151,7 +151,7 @@ int main()
     }
     
 
-	window = glfwCreateWindow(1920, 1080, "Hello World", NULL, NULL);
+	window = glfwCreateWindow(1920, 1080, "Hello World", glfwGetPrimaryMonitor(), NULL);
 	if (!window)
 	{
 		glfwTerminate();
@@ -166,8 +166,8 @@ int main()
     for (size_t i = 0; i < PARTICLES; i++)
     {
         positions[i] = glm::gaussRand(glm::vec4(0, 0, 0, 1), glm::vec4(1.0, 1.0, 0, 0));
-        velocities[i].x = (rand() % 1000 / 1000) - 0.5f;
-        velocities[i].y = (rand() % 1000 / 1000) - 0.5f;
+        velocities[i].x = ((rand() % 1000 / 1000) - 0.5f) * 10.f;
+        velocities[i].y = ((rand() % 1000 / 1000) - 0.5f) * 10.f;
     }
 
     // vao
