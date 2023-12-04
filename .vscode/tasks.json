@@ -17,6 +17,7 @@
 				"-lm",
 				"-lGLEW",
 				"-lGL",
+				"-lGLU",
 				"-lglfw",
 				"-lstdc++"
 			],

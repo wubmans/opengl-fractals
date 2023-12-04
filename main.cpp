@@ -2,8 +2,11 @@
 #include <fstream>
 
 #include <GL/glew.h>
+#include <GL/glu.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/random.hpp>
 
 const unsigned int PARTICLES = 1024 * 64;
@@ -17,6 +20,9 @@ const unsigned short OPENGL_MINOR_VERSION = 6;
 glm::vec4 positions[ PARTICLES ];
 glm::vec4 velocities[ PARTICLES ];
 
+glm::mat4 projection;
+glm::mat4 view;
+
 GLuint positionBuffer;
 GLuint velocitiesBuffer;
 GLuint vao;
@@ -26,6 +32,7 @@ float last_interval = 0.0f;
 int frameCount = 0;
 float interval = 0.0f;
 
+float z = 0.0f;
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods){
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
@@ -130,13 +137,33 @@ void loop(GLFWwindow* window, GLuint computeProgram, GLuint shaderProgram)
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
     // shader phase
+
+    // view = glm::lookAt(glm::vec3(0.0f, 0.0f, z), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    // create transformations
+    glm::mat4 model         = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+    glm::mat4 view          = glm::mat4(1.0f);
+    glm::mat4 projection    = glm::mat4(1.0f);
+  
+    model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.5f, 1.0f, 0.0f));
+    view  = glm::translate(view, glm::vec3(0.0f, 0.0f, z));
+    projection = glm::perspective(glm::radians(45.0f), (float) 1920 / (float) 1080, 0.1f, 100.0f);
+
     glUseProgram(shaderProgram);
+    
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, &view[0][0]);
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, &projection[0][0]);
+
+
+
     glBindVertexArray(vao);
     glDrawArrays(GL_POINTS, 0, PARTICLES);
 
     glfwSwapBuffers(window);
     glfwSwapInterval(0);
 }
+
 
 
 int main()
@@ -151,7 +178,7 @@ int main()
     }
     
 
-	window = glfwCreateWindow(1920, 1080, "Hello World", glfwGetPrimaryMonitor(), NULL);
+	window = glfwCreateWindow(1920, 1080, "Hello World", NULL  /*glfwGetPrimaryMonitor() */, NULL);
 	if (!window)
 	{
 		glfwTerminate();
@@ -163,9 +190,19 @@ int main()
 
     GLenum err = glewInit();
 
+    
+   
+    
+    view = glm::lookAt(glm::vec3(0.0f, 0.0f, z), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    // );
+
     for (size_t i = 0; i < PARTICLES; i++)
     {
-        positions[i] = glm::gaussRand(glm::vec4(0, 0, 0, 1), glm::vec4(1.0, 1.0, 0, 0));
+        positions[i].x = glm::linearRand(-1.0f, 1.0f);
+        positions[i].y = glm::linearRand(-1.0f, 1.0f);
+        positions[i].z = glm::linearRand(-1.0f, 1.0f);
+        positions[i].w = 1.0f;
+
         velocities[i].x = ((rand() % 1000 / 1000) - 0.5f) * 10.f;
         velocities[i].y = ((rand() % 1000 / 1000) - 0.5f) * 10.f;
     }
@@ -194,8 +231,13 @@ int main()
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE);
+    
+    glDisable(GL_CULL_FACE);
 
     glPointSize(2.0);     
+    glViewport(0, 0, 1920, 1080);
+
+    projection = glm::perspective(glm::radians(90.0f), 1920.0f / 1080.0f, 0.5f, 10000.0f);
 
     while (!glfwWindowShouldClose(window))
     {
@@ -205,6 +247,7 @@ int main()
         frameCount++;
         interval += glfwGetTime();
         dt = (interval - last_interval) / 1000.0f;
+        z -= 0.001f;
         last_interval = interval;
         glfwSetTime(0.0f);
 
