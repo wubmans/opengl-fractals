@@ -6,7 +6,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/random.hpp>
 
-const unsigned int PARTICLES = 1024 * 1024;
+const unsigned int PARTICLES = 1024 * 64;
 
 const unsigned int SCREEN_WIDTH = 1024;
 const unsigned int SCREEN_HEIGHT = 1024;
@@ -15,12 +15,17 @@ const unsigned short OPENGL_MAJOR_VERSION = 4;
 const unsigned short OPENGL_MINOR_VERSION = 6;
 
 glm::vec4 positions[ PARTICLES ];
+glm::vec4 velocities[ PARTICLES ];
 
 GLuint positionBuffer;
+GLuint velocitiesBuffer;
 GLuint vao;
 
-float dt;
-float delta;
+float dt = 0.0f;
+float last_interval = 0.0f;
+int frameCount = 0;
+float interval = 0.0f;
+
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods){
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
@@ -128,14 +133,11 @@ void loop(GLFWwindow* window, GLuint computeProgram, GLuint shaderProgram)
     glUseProgram(shaderProgram);
     glBindVertexArray(vao);
     glDrawArrays(GL_POINTS, 0, PARTICLES);
-  
 
     glfwSwapBuffers(window);
     glfwSwapInterval(0);
 }
 
-int frameCount = 0;
-float interval;
 
 int main()
 {
@@ -144,8 +146,9 @@ int main()
     GLFWwindow* window;
 
 	if (!glfwInit())
+    {
 		return -1;
-
+    }
     
 
 	window = glfwCreateWindow(1920, 1080, "Hello World", NULL, NULL);
@@ -163,6 +166,8 @@ int main()
     for (size_t i = 0; i < PARTICLES; i++)
     {
         positions[i] = glm::gaussRand(glm::vec4(0, 0, 0, 1), glm::vec4(1.0, 1.0, 0, 0));
+        velocities[i].x = (rand() % 1000 / 1000) - 0.5f;
+        velocities[i].y = (rand() % 1000 / 1000) - 0.5f;
     }
 
     // vao
@@ -172,23 +177,35 @@ int main()
     // ssbo
     glGenBuffers(1, &positionBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, positionBuffer);
-    glBufferData(GL_ARRAY_BUFFER, PARTICLES * sizeof(glm::vec4), &positions[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, PARTICLES * sizeof(glm::vec4), positions, GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), (char*) 0 + 0 * sizeof(GLfloat));
 
+    glGenBuffers(1, &velocitiesBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, velocitiesBuffer);
+    glBufferData(GL_ARRAY_BUFFER, PARTICLES * sizeof(glm::vec4), velocities, GL_STATIC_DRAW);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, positionBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, velocitiesBuffer);
 
     GLuint shaderProgram = createShaderProgram();
     GLuint computeProgram = createComputeProgram();
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+
+    glPointSize(2.0);     
+
     while (!glfwWindowShouldClose(window))
     {
+        //glUniform1fv(glGetUniformLocation(computeProgram, "dt"), 1, &dt);
         loop(window, computeProgram, shaderProgram);
-        dt += 0.01f;
+
         frameCount++;
         interval += glfwGetTime();
+        dt = (interval - last_interval) / 1000.0f;
+        last_interval = interval;
         glfwSetTime(0.0f);
 
         if (frameCount % 100 == 0)

@@ -5,6 +5,12 @@ layout(std430, binding = 0) buffer pos
     vec4 positions[];
 };
 
+layout(std430, binding = 1) buffer vel
+{
+    vec4 velocities[];
+};
+
+
 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
 float rand(float x)
@@ -18,11 +24,27 @@ uniform float dt;
 void main() 
 {
     uint index = gl_GlobalInvocationID.x;
-    vec4 pos = positions[index];
+    uint N = int(gl_NumWorkGroups.x * gl_WorkGroupSize.x);
 
-    float dx = rand(dt);
-    float dy = rand(dt);
+    vec4 p = positions[index];
+    vec4 v = velocities[index];
 
-    pos = vec4(pos.x + dx, pos.y - dy, pos.z, pos.w);
-    positions[index] = pos;
+    vec4 acceleration;
+
+    // float newDT = dt * 100.0;
+
+    for (int i = 0; i < N; i++)
+    {
+        vec4 other = positions[i];
+        vec4 direction = other - p;
+        float distance = length(direction);
+        acceleration += direction / (distance * distance + 0.0001f);
+    }
+
+    v.xy += acceleration.xy * dt;
+
+    p.xy += dt * v.xy;
+
+    positions[index] = p;
+    velocities[index] = v;
 }
