@@ -11,7 +11,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/random.hpp>
 
-#include "FlyingCamera.h"
+#include "camera.h"
 
 const unsigned int PARTICLES = 1024 * 64;
 
@@ -36,7 +36,7 @@ float last_interval = 0.0f;
 int frameCount = 0;
 float interval = 0.0f;
 
-FlyingCamera camera(90.0f, 0.0f, 0.0f, 10.0f, 0.1f, 1000.0f);
+Camera camera(glm::vec3(0, 0, 3.0f), glm::vec3(0, 0, -1.0f), glm::vec3(0, 1.0f, 0.0));
 
 
 float camera_yaw = 0.0f;

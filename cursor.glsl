@@ -39,7 +39,13 @@ void main()
         vec4 other = positions[i];
         vec4 direction = other - p;
         float distance = length(direction);
-        acceleration += 0.1f * direction / (distance * distance + 0.0001f);
+
+        if (distance < 2.0f)
+        {
+            acceleration += 0.1f * direction / (distance * distance + 0.0001f);
+        }
+
+        
     }
 
     v.xyz += acceleration.xyz * dt;
