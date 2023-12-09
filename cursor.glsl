@@ -24,34 +24,33 @@ uniform float dt;
 void main() 
 {
 
+    // float sigma = 10.0f;
+    // float rho =  28.0f; 
+    // float beta = 8.0 / 3.0f;
+
     uint index = gl_GlobalInvocationID.x;
-    uint N = int(gl_NumWorkGroups.x * gl_WorkGroupSize.x);
 
     vec4 p = positions[index];
     vec4 v = velocities[index];
 
-    vec4 acceleration;
+    // v.x = sigma * (p.y - p.x);
+    // v.y = p.x * ( rho - p.z ) - p.y;
+    // v.z = p.x * p.y - beta * p.z;
 
-    // float newDT = dt * 100.0;
-
-    for (int i = 0; i < N; i++)
+    for (int i = 0; i < 1024 * 64; i++)
     {
-        vec4 other = positions[i];
-        vec4 direction = other - p;
-        float distance = length(direction);
-
-        if (distance < 2.0f)
+        if (i != index)
         {
-            acceleration += 0.1f * direction / (distance * distance + 0.0001f);
+            vec4 D = p - positions[i];
+            float r = length(D); 
+            float f = - 9.2f / (r * r + 0.001f);
+            v += f * normalize(D) * 0.00000000001f;
         }
-
-        
     }
 
-    v.xyz += acceleration.xyz * dt;
-
-    p.xyz += v.xyz * dt;
+    p += v;
 
     positions[index] = p;
     velocities[index] = v;
 }
+

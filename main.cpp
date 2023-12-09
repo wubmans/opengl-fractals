@@ -5,10 +5,9 @@
 #include <GL/glu.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/quaternion.hpp>
-#include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/transform.hpp> 
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/random.hpp>
 
 #include "camera.h"
@@ -24,8 +23,9 @@ const unsigned short OPENGL_MINOR_VERSION = 6;
 glm::vec4 positions[ PARTICLES ];
 glm::vec4 velocities[ PARTICLES ];
 
-glm::mat4 projection;
-glm::mat4 view;
+glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f));
+glm::mat4 projection = glm::perspective(70.0f, 4.0f/3.0f, 0.1f, 100.0f );
+glm::mat4 view = glm::lookAt( glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(0., 0., 0.), glm::vec3(0., 1., 0.) );
 
 GLuint positionBuffer;
 GLuint velocitiesBuffer;
@@ -48,106 +48,123 @@ glm::vec3 camera_up(0.0f, 1.0f, 0.0f);
 glm::vec3 camera_look_at;
 glm::vec3 camera_direction;
 
-// glm::vec3 camera_forward = glm::vec3(0.0f, 0.0f, -1.0f);
-// glm::vec3 camera_right;
-// glm::vec3 camera_up = glm::vec3(0.0f, 0.0f, 1.0f);
-
+float r = 100.0f;
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods){
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
-
-    if (key == GLFW_KEY_W)
-    {
-        camera.moveForward(0.1f);
-    }
-
-    if (key == GLFW_KEY_S)
-    {
-        camera.moveBackward(0.1f);
-    }
-
-    if (key == GLFW_KEY_A)
-    {
-        camera.moveLeft(0.1f);
-    }
-
-    if (key == GLFW_KEY_D)
-    {
-        camera.moveRight(0.1f);
-    }
-    
-    if (key == GLFW_KEY_Q)
-    {
-        camera.setYaw(-5.0f);
-    }
-
-    if (key == GLFW_KEY_E)
-    {
-        camera.setYaw(5.0f);
-    }
-    
-    setbuf(stdout, NULL);
-   
-    printf("%.2f, %.2f, %.2f (%.2f, %.2f)\n", camera.loc.x , camera.loc.y , camera.loc.z, camera.yaw, camera.pitch);
 }
 
-double last_xpos;
-double last_ypos;
+glm::vec3 last_position(0.0f);
+glm::vec3 current_position(0.0f);
+glm::vec3 rotation;
+float angle;
 
-bool mouseSet = false;
+glm::vec3 toScreenCoord( double x, double y ) {
+    int windowWidth = 1920;
+    int windowHeight = 1080;
 
-static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos)
+    glm::vec3 coord(0.0f);
+    
+    coord.x =  (2 * x - windowWidth ) / windowWidth;
+    coord.y = -(2 * y - windowHeight) / windowHeight;
+    
+    /* Clamp it to border of the windows, comment these codes to allow rotation when cursor is not over window */
+    coord.x = glm::clamp( coord.x, -1.0f, 1.0f );
+    coord.y = glm::clamp( coord.y, -1.0f, 1.0f );
+    
+    float length_squared = coord.x * coord.x + coord.y * coord.y;
+    if( length_squared <= 1.0 )
+        coord.z = sqrt( 1.0 - length_squared );
+    else
+        coord = glm::normalize( coord );
+
+    printf("%f, %f, %f\n\n", coord.x, coord.y, coord.z);
+    
+    return coord;
+}
+
+bool initialized;
+
+
+static void cursor_position_callback(GLFWwindow* window, double x, double y)
 {
- 
-        if (!mouseSet) {
-            last_xpos = xpos;
-            last_ypos = ypos;
-            mouseSet = true;
-            return;
-        }
 
-        double dx = xpos - last_xpos;
-        double dy = ypos - last_ypos;
+    int state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+    
+    if (state != GLFW_PRESS)
+    {
+        initialized = false;
+        return;
+    }
 
-        printf("%.2f, %.2f, %.2f, %.2f\n", xpos, ypos, last_xpos, last_ypos);
+    if (!initialized)
+    {
+        last_position = toScreenCoord(x, y);
+        initialized = true;
+        return;
+    }
 
-        printf("%.2f, %.2f\n", dx, dy);
+    
 
-        last_xpos = xpos;
-        last_ypos = ypos;
+    glm::vec3 camera_axis;
 
-        
+     /* Tracking the subsequent */
+    current_position = toScreenCoord( x, y );
 
-        camera.setYaw(dx / 3.0f );
-        camera.setPitch(- dy / 3.0f);
+    
+    
+    /* Calculate the angle in radians, and clamp it between 0 and 90 degrees */
+    angle = acos( std::min(1.0f, glm::dot(current_position, last_position)));
+    
+    /* Cross product to get the rotation axis, but it's still in camera coordinate */
+    camera_axis  = glm::cross( last_position, current_position );
+
+    glm::mat3 c2o = glm::inverse(view) * model;
+
+    // /glm::mat4 m = glm::rotate(glm::degrees(angle) * 0.1f, camera_axis );
+
+    glm::vec3 model_axis = c2o * camera_axis;
+    model = glm::scale(glm::rotate(glm::mat4(1.0f),  glm::degrees(angle) * 0.1f, camera_axis ), glm::vec3(0.1f));
+
+    // last_position = current_position;
+
 }
+
+static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    printf("%f\n", r);
+    //printf("%f", yoffset);
+    r -= yoffset;
+}
+
 
 GLchar* LoadShader(const std::string &file) {
 
-  std::ifstream shaderFile;
-  long shaderFileLength;
+    std::ifstream shaderFile;
+    long shaderFileLength;
 
-  shaderFile.open(file, std::ios::binary);
+    shaderFile.open(file, std::ios::binary);
 
-  if (shaderFile.fail()) {
-    throw std::runtime_error("COULD NOT FIND SHADER FILE");
-  }
+    if (shaderFile.fail()) 
+    {
+        throw std::runtime_error("COULD NOT FIND SHADER FILE");
+    }
 
-  shaderFile.seekg(0, shaderFile.end);
-  shaderFileLength = shaderFile.tellg();
-  shaderFile.seekg(0, shaderFile.beg);
+    shaderFile.seekg(0, shaderFile.end);
+    shaderFileLength = shaderFile.tellg();
+    shaderFile.seekg(0, shaderFile.beg);
 
-  GLchar *shaderCode = new GLchar[shaderFileLength + 1];
-  shaderFile.read(shaderCode, shaderFileLength);
+    GLchar *shaderCode = new GLchar[shaderFileLength + 1];
+    shaderFile.read(shaderCode, shaderFileLength);
 
-  shaderFile.close();
+    shaderFile.close();
 
-  shaderCode[shaderFileLength] = '\0';
+    shaderCode[shaderFileLength] = '\0';
 
-  return shaderCode;
+    return shaderCode;
 }
 
 GLuint createComputeProgram()
@@ -209,44 +226,10 @@ GLuint createShaderProgram()
 }
 
 
-
-
 void updateCamera()
 {
 
-    // glm::vec3 temp_front;
-
-    // temp_front.x = sin(camera_yaw);
-    // temp_front.y = -(sin(camera_pitch)*cos(camera_yaw));
-    // temp_front.z = -(cos(camera_pitch)*cos(camera_yaw));
     
-    // // printf("%.2f, %.2f, %.2f\n", temp_front.x , temp_front.y , temp_front.z);
-
-    // printf("%.2f, %.2f\n", camera_pitch, camera_yaw);
-    // camera_forward = glm::normalize(temp_front);
-    // camera_right = glm::normalize(glm::cross(camera_forward, glm::vec3(0.0f, 1.0f, 0.0f)));  
-    // camera_up    = glm::normalize(glm::cross(camera_right, camera_forward));
-
-    // camera_direction = glm::normalize(camera_look_at - camera_position);
-
-    // //detmine axis for pitch rotation
-    // glm::vec3 axis = glm::cross(camera_direction, camera_up);
-    // //compute quaternion for pitch based on the camera pitch angle
-    // glm::quat pitch_quat = glm::angleAxis(camera_pitch, axis);
-    // //determine heading quaternion from the camera up vector and the heading angle
-    // glm::quat yaw_quat = glm::angleAxis(camera_yaw, camera_up);
-    // //add the two quaternions
-    // glm::quat temp = glm::cross(pitch_quat, yaw_quat);
-    // temp = glm::normalize(temp);
-    // //update the direction from the quaternion
-    // camera_direction = glm::rotate(temp, camera_direction);
-    // camera_position += camera_position_delta;
-
-    // // camera_yaw *= .5;
-    // // camera_pitch *= .5;
-    // camera_position_delta = camera_position_delta * .8f;
-
-    view  = glm::lookAt(camera.loc, camera.loc + camera.dir, glm::vec3(0.0f, 1.0f, 0.0f));
 }
 
 void loop(GLFWwindow* window, GLuint computeProgram, GLuint shaderProgram)
@@ -266,13 +249,11 @@ void loop(GLFWwindow* window, GLuint computeProgram, GLuint shaderProgram)
     // view = glm::lookAt(glm::vec3(0.0f, 0.0f, z), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
     updateCamera();
-  
-    projection = glm::perspective(glm::radians(45.0f), (float) 1920 / (float) 1080, 0.1f, 100.0f);
 
     glUseProgram(shaderProgram);
     
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, &view[0][0]);
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, &projection[0][0]);
+    glm::mat4 mvp = projection * view * model;
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
 
     glBindVertexArray(vao);
     glDrawArrays(GL_POINTS, 0, PARTICLES);
@@ -305,6 +286,7 @@ int main()
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, key_callback);
     glfwSetCursorPosCallback(window, cursor_position_callback);
+    glfwSetScrollCallback(window, scroll_callback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
 
     GLenum err = glewInit();
@@ -314,14 +296,14 @@ int main()
 
     for (size_t i = 0; i < PARTICLES; i++)
     {
-        positions[i].x = glm::linearRand(-1.0f, 1.0f);
-        positions[i].y = glm::linearRand(-1.0f, 1.0f);
-        positions[i].z = glm::linearRand(-1.0f, 1.0f);
-        positions[i].w = 1.0f;
+        positions[i].x = glm::gaussRand(0.0f, 0.5f);
+        positions[i].y = glm::gaussRand(0.0f, 0.5f);
+        positions[i].z = glm::gaussRand(0.0f, 0.5f);
+        positions[i].w = 0.2f;
 
-        velocities[i].x = glm::gaussRand(0.0f, 0.6f);
-        velocities[i].y = glm::gaussRand(0.0f, 0.6f);
-        velocities[i].z = glm::gaussRand(0.0f, 0.6f);
+        velocities[i].x = glm::linearRand(-0.001f, 0.001f);
+        velocities[i].y = glm::linearRand(-0.001f, 0.001f);
+        velocities[i].z = glm::linearRand(-0.001f, 0.001f);
     }
 
     // vao
@@ -354,7 +336,12 @@ int main()
     glPointSize(2.0);     
     glViewport(0, 0, 1920, 1080);
 
-    projection = glm::perspective(glm::radians(90.0f), 1920.0f / 1080.0f, 0.5f, 1000.0f);
+    float aspect = (float) 19200.f / 1080.0f;
+
+    //projection = glm::ortho(-aspect, aspect, -1.0f, 1.0f, 0.1f, 100.0f);
+    projection = glm::perspective(glm::radians(45.0f), (float) 1920 /(float) 1080, 0.1f, 1000.0f);
+    view = glm::lookAt( glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0., 0., 0.), glm::vec3(0., 1., 0.) );
+
 
     while (!glfwWindowShouldClose(window))
     {
@@ -363,7 +350,7 @@ int main()
 
         frameCount++;
         interval += glfwGetTime();
-        dt = (interval - last_interval) / 100.0f;
+        dt = (interval - last_interval) * 10.0f;
         
         last_interval = interval;
         glfwSetTime(0.0f);
@@ -377,3 +364,4 @@ int main()
     }
 
 }
+

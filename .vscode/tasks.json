@@ -3,13 +3,11 @@
 	"tasks": [
 		{
 			"type": "cppbuild",
-			"label": "C/C++: gcc build active file",
+			"label": "build",
 			"command": "/usr/bin/gcc",
 			"args": [
 				"-fdiagnostics-color=always",
 				"-I/usr/include",
-				
-			
 				"-g",
 				"${file}",
 				"-o",
@@ -19,6 +17,7 @@
 				"-lGL",
 				"-lGLU",
 				"-lglfw",
+				"-lglut",
 				"-lstdc++"
 			],
 			"options": {
